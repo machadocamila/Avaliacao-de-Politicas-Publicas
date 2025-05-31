@@ -1,0 +1,178 @@
+---
+title: "Avaliação de Políticas Públicas"
+author: "Camila Machado"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true               # sumário automático
+    toc_depth: 3            # profundidade do sumário
+    toc_float: true         # sumário flutuante à direita
+    number_sections: true   # numeração das seções
+    theme: cerulean         # tema visual (pode mudar: journal, flatly, united etc.)
+    highlight: tango        # sintaxe colorida para código
+    code_folding: show      # permite recolher código R
+    df_print: paged         # tabelas longas com paginação
+lang: pt-BR                 # idioma (para acentuação correta no sumário)
+---
+
+```{r pacotes, include=FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(here)
+library(tidyverse)
+library(stargazer)
+setwd("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais")
+```
+
+```{r dados, include = FALSE, echo = FALSE}
+data <- readRDS("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais/Avaliacao-de-Politicas-Publicas/dados/Pnadpes_final_9295.rds")
+
+```
+
+```{r id domicilio}
+
+## V0101 ano de referência
+## UF
+glimpse(data$uf)
+## v0102 - Número do controle
+glimpse(data$v0102)
+## v0103 - Número de série
+glimpse(data$v0103)
+glimpse(data$v0403)
+# Criando o identificador
+data <- data %>%
+  mutate(
+    ID_DOMICILIO = paste(uf, v0102, v0103, sep = "_")
+  )
+
+
+```
+
+```{r, echo = FALSE, eval = FALSE}
+#Verificando quantas pessoas de cada condição existem, só para ter um sanity check se não tem umas 20 pessoas de mesma condição no mesmo domicílio
+
+# Idealmente, queremos um responsávle e um conjuge
+# 1992
+contagem_v0401_por_domicilio_1992 <- data %>% filter(v0101 == 92) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1992_formatado <- contagem_v0401_por_domicilio_1992 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+}
+
+# 1993
+contagem_v0401_por_domicilio_1993 <- data %>% filter(v0101 == 93) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1993_formatado <- contagem_v0401_por_domicilio_1993 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+}
+
+# 1995
+contagem_v0401_por_domicilio_1995 <- data %>% filter(v0101 == 95) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1995_formatado <- contagem_v0401_por_domicilio_1995 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+}
+
+rm(contagem_v0401_por_domicilio_1992,contagem_v0401_por_domicilio_1992_formatado,contagem_v0401_por_domicilio_1993,contagem_v0401_por_domicilio_1993_formatado,contagem_v0401_por_domicilio_1995,contagem_v0401_por_domicilio_1995_formatado)
+
+```
+
+# Definindo o grupo controle e tratado
+
+## Tratado: 
+
+### v0302 == 4 (Feminino)
+
+### v8005 >= 15 E v8005 <= 24
+
+### v1001 == 1 (Vive em companhia de esposo(a) ou companheiro(a)?)
+
+### v1002 == 8 OU v1002 == 6 (união proveniente de união consensual ou apenas casamento religioso)
+
+## Controle: 
+
+### v0302 == 4 (Feminino)
+
+### v8005 >= 15 E v8005 <= 24
+
+### v1001 == 1 Vive em companhia de esposo(a) ou companheiro(a)?)
+
+### v1002 == 2 OU v1002 == 4 (união proveniente de casamento civil apenas ou casamento civil e religioso)
+
+```{r, echo = TRUE}
+data <- data %>%
+    mutate(
+      Tratamento = case_when(
+        # Critérios para Grupo Tratado (valor = 1)
+        v0302 == 4 &                   # Sexo Feminino
+        (v8005 >= 15 & v8005 <= 24) &  # Idade entre 15 e 24 anos
+        v1001 == 1 &                   # Vive em companhia (está em união)
+        (v1002 == 8 | v1002 == 6)      # União consensual (8) OU Apenas religiosa (6)
+        ~ 1,
+
+        # Critérios para Grupo Controle (valor = 0)
+        v0302 == 4 &                   # Sexo Feminino
+        (v8005 >= 15 & v8005 <= 24) &  # Idade entre 15 e 24 anos
+        v1001 == 1 &                   # Vive em companhia (está em união)
+        (v1002 == 2 | v1002 == 4)      # Casamento civil e religioso (2) OU Apenas civil (4)
+        ~ 0,
+
+        # Para todos os outros casos, atribui NA (Não Aplicável)
+        TRUE ~ NA_integer_
+      )
+    )
+# Dataframe
+contagem_status_por_ano <- data %>%
+  group_by(v0101, Tratamento) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+# Tabela pivot
+contagem_status_por_ano <- contagem_status_por_ano %>%
+pivot_wider(names_from = Tratamento,
+            values_from = quantidade,
+            values_fill = 0) 
+
+
+```
+
