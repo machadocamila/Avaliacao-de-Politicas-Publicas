@@ -21,10 +21,15 @@ library(here)
 library(tidyverse)
 library(stargazer)
 setwd("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais")
+#setwd("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol")
+
 ```
 
 ```{r dados, include = FALSE, echo = FALSE}
 data <- readRDS("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais/Avaliacao-de-Politicas-Publicas/dados/Pnadpes_final_9295.rds")
+
+#data <- readRDS("Bases/Pnadpes_final_9295.RDS")
+
 
 ```
 
@@ -174,5 +179,129 @@ pivot_wider(names_from = Tratamento,
             values_fill = 0) 
 
 
+```
+
+```{r extração dos controles}
+#Filtrando as var de escolha
+temp <- data %>% 
+  # mutate(
+  #   
+  #   #Renda individual
+  #   renda_total_ind = coalesce(data$V7122, 0) + coalesce(data$V7125, 0) + coalesce(data$V7127, 0)
+  # ) %>% 
+  # group_by(ID_DOMICILIO) %>% 
+  # mutate(
+  #   renda_total_dom = sum(renda_total_ind, na.rm = TRUE),
+  #   membros_dom = n(),
+  #   renda_pc_dom = renda_total_dom / membros_dom
+  # ) %>%
+  # 
+  # Mais facil extrair os dados da PnadPnad
+  filter(!is.na(Tratamento)) %>% 
+  select(
+    # Identification variables
+    v0101,       # Year of reference
+    uf,          # State code
+    v0102,       # Household control number
+    v0103,       # Household series number
+    v0301,       # Individual order in household
+    v0302,       # Sex (1=Male, 2=Female)
+
+    # Demographics
+    v8005,       # Age
+    v0401,       # Relationship in household (to determine head/spouse/child)
+    v0607,       # Highest level of education attended
+    v0610,       # Last grade completed
+
+    # Education status
+    v0602,       # Currently enrolled in school
+    v0603,       # Type of course (to exclude preschool, etc.)
+
+    # Employment and time allocation
+    v9001,       # Worked during week of reference (LF participation)
+    v0713,       # Normal weekly hours worked
+    v7122,       # Income from work (in money)
+    v7125,       # Income from products
+    v7127,       # Income from benefits
+    v7128,       # Non-remunerated indicator
+
+    # Occupation & activity
+    v9906,       # Occupation code
+    v9907,       # Economic sector / activity
+
+    
+      #Somar o n° de filhos
+    v1141,
+    v1142,
+    v1151,
+    v1152,
+  
+    v4703, #Anos de estudo
+    v4721, #Valor do rendimento mensal
+    v4723, #Tipos de família
+
+    v1254, #Recebe pensao
+    # Migration, geography
+    v0501,       # Born in this municipality
+    # educa_cpp,
+    # g_educa_cpp,
+    ID_DOMICILIO,
+    v4729,
+    
+    renda_pc_dom,
+    
+    Tratamento
+    ) %>% 
+  rename(
+    idade = v8005,
+    ano = v0101,
+    dom_num = v0102,
+    dom_ser = v0103,
+    id_in_dom = v0301,
+    sexo = v0302,
+    rel_in_dom = v0401,
+    educ = v0607,
+    anos_educ = v4703,
+    
+    serie_completa = v0610,
+    kid_matricula = v0602,
+    tipo_cur = v0603,
+    trab_ref = v9001,
+    horas_trab = v0713,
+    pensao = v1254,
+    no_renda = v7128,
+    ocupacao = v9906,
+    setor = v9907,
+    mun_nasc = v0501,
+    
+    
+    
+    peso = v4729
+  )
+
+
+#Construindo as dummies de interesse.
+
+temp <- temp %>% 
+  mutate(
+    ano = ano + 1900,
+    
+    fem = ifelse(sexo == 4, 1, 0),
+    
+    pensao_dummy = ifelse(!is.na(pensao), 1, 0),
+    
+    #FILHOS
+    v1141 = ifelse(!v1141 %in% c(-1,99), v1141, 0),
+    v1142 = ifelse(!v1142 %in% c(-1,99), v1142, 0),
+    
+    #FILHAS
+    v1151 = ifelse(!v1151 %in% c(-1,99), v1151, 0),
+    v1152 = ifelse(!v1152 %in% c(-1,99), v1152, 0),
+  
+    total_filhos = v1141 + v1142 + v1151 + v1152
+  )
+
+summary(temp)
+            
 ```
 
