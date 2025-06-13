@@ -1,0 +1,665 @@
+---
+title: "Avaliação de Políticas Públicas"
+author: "Grupo"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true               # sumário automático
+    toc_depth: 3            # profundidade do sumário
+    toc_float: true         # sumário flutuante à direita
+    number_sections: true   # numeração das seções
+    theme: cerulean         # tema visual (pode mudar: journal, flatly, united etc.)
+    highlight: tango        # sintaxe colorida para código
+    code_folding: show      # permite recolher código R
+    df_print: paged         # tabelas longas com paginação
+lang: pt-BR                 # idioma (para acentuação correta no sumário)
+---
+
+```{r pacotes, include=FALSE, message = FALSE, warning = FALSE, echo = FALSE}
+library(dplyr)
+library(here)
+library(tidyverse)
+library(stargazer)
+library(MatchIt)
+library(broom)
+library(kableExtra) #Para gerar em latex as tabelas
+#setwd("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais")
+
+setwd("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol")
+
+```
+
+```{r dados, include = FALSE, echo = FALSE}
+data <- readRDS("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/Bases/Pnadpnad_final_9295.rds")
+
+#data <- readRDS("C:/Users/santo/OneDrive/Área de Trabalho/Avaliação de Políticas Sociais/Avaliacao-de-Politicas-Publicas/dados/Pnadpnad_final_9295.rds")
+
+
+```
+
+Ajustei os controles
+Adicionei renda domiciliar per capta (renda domiciliar sendo a primeira declarada. Vejam o código e vejam se concordam)
+
+
+```{r id domicilio, echo = FALSE, include = FALSE}
+
+## V0101 ano de referência
+## UF
+glimpse(data$uf)
+## v0102 - Número do controle
+glimpse(data$v0102)
+## v0103 - Número de série
+glimpse(data$v0103)
+glimpse(data$v0403)
+# Criando o identificador
+data <- data %>%
+  mutate(
+    ID_DOMICILIO = paste(uf, v0102, v0103, sep = "_")
+  )
+
+
+```
+
+```{r, echo = FALSE, eval = FALSE}
+#Verificando quantas pessoas de cada condição existem, só para ter um sanity check se não tem umas 20 pessoas de mesma condição no mesmo domicílio
+
+# Idealmente, queremos um responsável e um conjuge
+# 1992
+contagem_v0401_por_domicilio_1992 <- data %>% filter(v0101 == 92) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1992_formatado <- contagem_v0401_por_domicilio_1992 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+
+
+# 1993
+contagem_v0401_por_domicilio_1993 <- data %>% filter(v0101 == 93) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1993_formatado <- contagem_v0401_por_domicilio_1993 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+
+
+# 1995
+contagem_v0401_por_domicilio_1995 <- data %>% filter(v0101 == 95) %>%
+  group_by(ID_DOMICILIO, v0401) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+contagem_v0401_por_domicilio_1995_formatado <- contagem_v0401_por_domicilio_1995 %>%
+  mutate(
+    V0401_desc = factor(v0401,
+                        levels = 1:8,
+                        labels = c("Pessoa_Ref", "Conjuge", "Filho",
+                                   "Outro_Parente", "Agregado", "Pensionista",
+                                   "Empregado_Dom", "Parente_Empr_Dom"))
+  ) %>%
+  select(-v0401) %>% # Remove a coluna V0401 original numérica
+  pivot_wider(
+    names_from = V0401_desc,
+    values_from = quantidade,
+    values_fill = 0 # Preenche com 0 se uma categoria não existir no domicílio
+  )
+
+# Vendo o número máximo de pessoas de ref e conjuge por domicilio. Idealmente, 1 é o máximo
+
+
+## 1992 ##
+max(contagem_v0401_por_domicilio_1992_formatado$Pessoa_Ref)
+max(contagem_v0401_por_domicilio_1992_formatado$Conjuge)
+
+
+## 1993 ##
+max(contagem_v0401_por_domicilio_1993_formatado$Pessoa_Ref)
+max(contagem_v0401_por_domicilio_1993_formatado$Conjuge)
+
+
+
+## 1995 ##
+max(contagem_v0401_por_domicilio_1995_formatado$Pessoa_Ref)
+max(contagem_v0401_por_domicilio_1995_formatado$Conjuge)
+
+
+rm(contagem_v0401_por_domicilio_1992,contagem_v0401_por_domicilio_1992_formatado,contagem_v0401_por_domicilio_1993,contagem_v0401_por_domicilio_1993_formatado,contagem_v0401_por_domicilio_1995,contagem_v0401_por_domicilio_1995_formatado)
+
+```
+
+# Definindo o grupo controle e tratado
+
+## Tratado: 
+
+### v0302 == 4 (Feminino)
+
+### v8005 >= 15 E v8005 <= 24
+
+### v1001 == 1 (Vive em companhia de esposo(a) ou companheiro(a)?)
+
+### v1002 == 8 OU v1002 == 6 (união proveniente de união consensual ou apenas casamento religioso)
+
+## Controle: 
+
+### v0302 == 4 (Feminino)
+
+### v8005 >= 15 E v8005 <= 24
+
+### v1001 == 1 Vive em companhia de esposo(a) ou companheiro(a)?)
+
+### v1002 == 2 OU v1002 == 4 (união proveniente de casamento civil apenas ou casamento civil e religioso)
+
+```{r, echo = TRUE}
+
+data <- data %>%
+    mutate(
+      Tratamento = case_when(
+        # Critérios para Grupo Tratado (valor = 1)
+        v0302 == 4 &                   # Sexo Feminino
+        (v8005 >= 15 & v8005 <= 24) &  # Idade entre 15 e 24 anos
+        v1001 == 1 &                   # Vive em companhia (está em união)
+        (v1002 == 8 | v1002 == 6) &    # União consensual (8) OU Apenas religiosa (6)
+        (v0402 == 1 | v0402 == 2)      # tem que ser ou pessoa responsável (1) ou cônjuge (2), na família
+        ~ 1,
+
+        # Critérios para Grupo Controle (valor = 0)
+        v0302 == 4 &                   # Sexo Feminino
+        (v8005 >= 15 & v8005 <= 24) &  # Idade entre 15 e 24 anos
+        v1001 == 1 &                   # Vive em companhia (está em união)
+        (v1002 == 2 | v1002 == 4)  &  # Casamento civil e religioso (2) OU Apenas civil (4)
+        (v0402 == 1 | v0402 == 2)      # tem que ser ou pessoa responsável (1) ou cônjuge (2), na família
+        ~ 0,
+
+        # Para todos os outros casos, atribui NA (Não Aplicável)
+        TRUE ~ NA_integer_
+      )
+    )
+# Dataframe
+contagem_status_por_ano <- data %>%
+  group_by(v0101, Tratamento) %>%
+  summarise(quantidade = n(), .groups = 'drop')
+
+# Tabela pivot
+contagem_status_por_ano <- contagem_status_por_ano %>%
+pivot_wider(names_from = Tratamento,
+            values_from = quantidade,
+            values_fill = 0) 
+
+contagem_status_por_ano
+```
+Criando renda domiciliar per capita
+
+```{r renda dom per capita essa célula demora}
+
+## Vejam se querem manter o "first" ou se querem que o código pegue a maior renda mensal domiciliar declarada, ou talvez aquela declarada pelo responsável do domicílio ##
+data <- data %>%
+  #Agrupando por identificador de domicilio
+  group_by(ID_DOMICILIO) %>%
+
+  mutate(
+    num_moradores = n(),
+    
+    # 2. Criar o rendimento domiciliar per capita (renda_dom_pc)
+    # Usamos case_when para lidar com as condições de forma clara.
+    # Usamos V4721 para a renda. first() é usado para pegar o valor da renda do
+    # primeiro membro do domicílio, já que é o mesmo para todos.
+    renda_dom_pc = case_when(
+      # Condição 1: Se a renda domiciliar (V4721) for NA ou o código de "ignorado"
+      # a renda per capita será NA.
+      is.na(first(v4614)) | first(v4614) == 999999999999 ~ NA,
+      
+      # Condição 2: Se o número de moradores for maior que 0 (caso válido),
+      # calcula a renda per capita.
+      num_moradores > 0 ~ first(v4614) / num_moradores,
+      
+      # Condição 3: Para qualquer outro caso, define como 0 para evitar erros.
+      TRUE ~ 0
+    )
+  ) %>%
+  
+  # Desagrupa os dados para que futuras operações não sejam afetadas pelo agrupamento.
+  ungroup()
+```
+
+Tem numero de filhos negativo!
+Vejam se voces querem tratar como um erro de digitação, e considerar -1 como 1
+Ou se querem considerar como Zero
+Consertar isso antes de gerar o temp!!
+
+```{r variavel numero de filhos}
+unique(data$v1141)
+unique(data$v1142)
+unique(data$v1151)
+unique(data$v1142)
+```
+
+
+```{r extração dos controles}
+
+temp <- data %>% 
+  filter(!is.na(Tratamento)) %>% 
+  select(
+    # --- Identificação ---
+    v0101,            # Ano de referência
+    uf,               # Unidade da Federação
+    v0102,            # Número de controle do domicílio
+    v0103,            # Número de série do domicílio
+    v0301,            # Número de ordem do morador
+    v0302,            # Sexo
+    ID_DOMICILIO,     # Identificador único do domicílio
+    
+    # --- Demográficas ---
+    v8005,            # Idade
+    v0401,            # Condição na unidade domiciliar
+    
+    # --- Educação ---
+    v0607,            # Curso mais elevado que frequentou
+    v0610,            # Última série concluída
+    v0602,            # Frequenta escola ou creche
+    v0603,            # Curso que frequenta
+    v4703,            # Anos de estudo
+    
+    # --- Trabalho e Rendimento ---
+    v9001,            # Trabalhou na semana de referência
+    v0713,            # Horas trabalhadas normalmente por semana (para crianças 5-9 anos)
+    v7122,            # Rendimento mensal em dinheiro do trabalho
+    v7125,            # Rendimento mensal em produtos/mercadorias do trabalho
+    v7127,            # Código de rendimento em benefícios
+    v7128,            # Indicador de trabalho não remunerado
+    v1254,            # Código de rendimento de pensão
+    v4721,            # Valor do rendimento mensal domiciliar
+    v4614,            # Rendimento mensal domiciliar (do arquivo de domicílio)
+    renda_dom_pc,     # Sua variável já criada de renda domiciliar per capita
+    
+    # --- Ocupação ---
+    v9906,            # Código da ocupação
+    v9907,            # Código da atividade principal
+    
+    # --- Fecundidade (Nº de filhos da mulher) ---
+    v1141,            # Nº de filhos homens no domicílio
+    v1142,            # Nº de filhos mulheres no domicílio
+    v1151,            # Nº de filhos homens em outro local
+    v1152,            # Nº de filhos mulheres em outro local
+    
+    # --- Família e Migração ---
+    v4723,            # Tipo de família
+    v0501,            # Nasceu neste município
+    
+    # --- Variáveis de controle/peso ---
+    v4729,            # Peso da pessoa
+    Tratamento
+    
+  ) %>% 
+  rename(
+    # --- Identificação ---
+    ano = v0101,
+    uf = uf,
+    id_domicilio = ID_DOMICILIO,
+    num_controle_dom = v0102,
+    num_serie_dom = v0103,
+    num_ordem_morador = v0301,
+    
+    # --- Demográficas ---
+    idade = v8005,
+    sexo = v0302,
+    condicao_no_dom = v0401, # Condição na unidade domiciliar 
+    
+    # --- Educação ---
+    curso_mais_elevado = v0607, # Curso mais elevado que frequentou 
+    ultima_serie_concluida = v0610, # Última série concluída neste curso que frequentou 
+    frequenta_escola = v0602, # Frequenta escola ou creche 
+    tipo_curso_frequenta = v0603, # Qual o curso que frequenta 
+    anos_estudo = v4703, # Anos de estudo 
+    
+    # --- Trabalho e Rendimento ---
+    trabalhou_semana_ref = v9001, # Trabalhou na semana de 24 a 30/09/95 
+    horas_trabalhadas = v0713, # Quantas horas trabalhava normalmente na semana 
+    renda_trab_dinheiro = v7122, # Valor de rendimento mensal em dinheiro (no trabalho da semana) 
+    renda_trab_produto = v7125, # Valor de rendimento mensal em produtos ou mercadorias 
+    cod_renda_beneficio = v7127, # Código_6 de rendimento mensal em beneficios 
+    indicador_nao_remunerado = v7128, # Código 8 de não remunerado 
+    pensao = v1254, # Código 2 de rendimento de pensão 
+    renda_dom_total = v4721, # Valor do rendimento mensal domiciliar 
+    renda_dom_total_v2 = v4614, # Rendimento mensal domiciliar' 
+    renda_dom_per_capita = renda_dom_pc,
+    
+    # --- Ocupação ---
+    cod_ocupacao = v9906, # Código da ocupação que exercia no trabalho 
+    cod_atividade = v9907, # Código da atividade principal do Emprendimento 
+    
+    # --- Fecundidade ---
+    filhos_homens_dom = v1141, # Número de filhos - Homens que moram neste domicilio 
+    filhos_mulheres_dom = v1142, # Número de filhos - Mulheres que moram neste domicilio 
+    filhos_homens_outrolocal = v1151, # Número de filhos Homens que moram em outro local 
+    filhos_mulheres_outrolocal = v1152, # Número de filhos - Mulheres que moram em outro local 
+
+    # --- Família e Migração ---
+    tipo_familia = v4723, # Tipo de familia 
+    nasceu_no_municipio = v0501, # Nasceu neste municipio 
+    
+    # --- Variáveis de controle/peso ---
+    peso_pessoa = v4729, # Peso da pessoa 
+    tratamento = Tratamento
+  )
+
+################################################# - ################################################################
+#Construindo as dummies de interesse.
+
+temp <- temp %>% 
+  mutate(
+    ano = ano + 1900,
+    
+    fem = ifelse(sexo == 4, 1, 0),
+    
+    pensao_dummy = ifelse(!is.na(pensao), 1, 0),
+    #Moram no domicílio
+    dummy_filhos_homens_dom = ifelse(!filhos_homens_dom %in% c(-1,99), filhos_homens_dom, 0),
+    dummy_filhos_mulheres_dom = ifelse(!filhos_mulheres_dom %in% c(-1,99), filhos_mulheres_dom, 0),
+    
+    #Não moram no domicílio
+    dummy_filhos_homens_outrolocal = ifelse(!filhos_homens_outrolocal %in% c(-1,99), filhos_homens_outrolocal, 0),
+    dummy_filhos_mulheres_outrolocal = ifelse(!filhos_mulheres_outrolocal %in% c(-1,99), filhos_mulheres_outrolocal, 0),
+  
+    total_filhos = filhos_homens_dom + filhos_mulheres_dom + filhos_homens_outrolocal + filhos_mulheres_outrolocal
+  )
+
+stargazer(temp,
+          type = "latex",                            # Formato de saída
+          title = "Estatísticas Descritivas",        # Título da sua tabela
+          header = FALSE,                            # Remove o cabeçalho padrão do stargazer
+          digits = 2,                                # Define o número de casas decimais
+          summary.stat = c("n", "mean", "sd", "min", "max"), # Escolhe quais estatísticas mostrar
+          notes = "Fonte: Elaboração própria com dados da PNAD." # Adiciona uma nota de rodapé
+          )
+glimpse(temp)            
+```
+
+```{r Tabela Descritiva}
+summary_df <- temp %>%
+  select(
+    tratamento,
+    fem,
+    idade,
+    anos_estudo,
+    renda_dom_per_capita,
+    pensao_dummy,
+    dummy_filhos_homens_dom,
+    dummy_filhos_mulheres_dom,
+    total_filhos,
+    peso_pessoa
+  ) %>%
+  mutate(across(everything(), ~ as.numeric(as.character(.))))
+
+library(dplyr)
+
+
+weighted_stats <- function(x, w) {
+  w <- w[!is.na(x)]
+  x <- x[!is.na(x)]
+  w_mean <- weighted.mean(x, w)
+  w_var <- sum(w * (x - w_mean)^2) / sum(w)
+  w_sd <- sqrt(w_var)
+  list(
+    mean = w_mean,
+    sd = w_sd,
+    min = min(x),
+    max = max(x)
+  )
+
+
+}
+
+vars <- c("tratamento","fem", "idade", "anos_estudo", "renda_dom_per_capita", "pensao_dummy",
+          "dummy_filhos_homens_dom", "dummy_filhos_mulheres_dom", "total_filhos")
+
+# Apply the function
+summary_table <- lapply(vars, function(v) {
+  res <- weighted_stats(temp[[v]], temp$peso_pessoa)
+  data.frame(
+    Variable = v,
+    Mean = res[["mean"]],
+    SD   = res[["sd"]],
+    Min  = res[["min"]],
+    Max  = res[["max"]]
+  )
+}) %>%
+  bind_rows()
+
+
+col <- c("Variáveis", "Média", "DP", "Min", "Max")
+
+row <- c("Tratamento",
+         "Sexo (fem = 1)",
+         "Idade",
+         "Anos de Estudo",
+         "Renda dom. per capita",
+         "Pensão (sim = 1)",
+         "Filhos Homens (dom.)",
+         "Filhos Mulheres (dom.)",
+         "Total de filhos")
+
+
+colnames(summary_table) <- col
+
+rownames(summary_table) <- row
+
+
+summary_table <- summary_table %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+latex_table <- kable(summary_table,
+                     format = "latex",
+                     booktabs = TRUE,
+                     caption = "Estatísticas descritivas ponderadas",
+                     align = "lccccc")
+
+# Save it to a .tex file
+writeLines(latex_table, "C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/summary_table.tex")
+
+rm(summary_table,vars, weighted_stats, summary_df, latex_table)
+
+```
+
+
+```{r}
+
+library(cobalt)
+
+colnames(temp)
+
+
+for (year in c(1992, 1993, 1995)) {
+  
+  df_psm <- temp %>% 
+    filter(ano == year) %>% 
+    select(c(tratamento, idade, anos_estudo, ultima_serie_concluida, renda_dom_per_capita,
+             pensao_dummy, total_filhos)) %>% 
+    filter(complete.cases(.))
+
+  match_model <- matchit(tratamento ~
+                           idade +
+                           anos_estudo + 
+                           ultima_serie_concluida +
+                           renda_dom_per_capita +
+                           total_filhos,
+                         data = df_psm,
+                         caliper = 0.05,
+                         method = "nearest",
+                         replace = TRUE)
+  
+ fig <- plot(summary(match_model,
+               interactions = T)
+               #,
+               #var.order = "unmatched",
+               #abs = T
+       )
+ 
+
+ 
+ # Open PNG device
+pdf(paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/",year,"_matchit_summary_plot.pdf"), width = 8, height = 6)
+
+# Generate the plot (this draws directly to the file)
+plot(summary(match_model, interactions = TRUE))
+
+# Close the device
+dev.off()
+
+ 
+
+
+# Define custom labels
+custom_labels <- c(
+  idade = "Idade",
+  anos_estudo = "Anos de Estudo",
+  ultima_serie_concluida = "Última Série",
+  renda_dom_per_capita = "Renda per Capita",
+  total_filhos = "Total de Filhos"
+)
+
+
+pdf(paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/",year,"_matchit_summary_love_plot.pdf"), width = 8, height = 6)
+
+plot_obj <- love.plot(match_model,
+          stats = "mean.diffs",
+          var.names = custom_labels,
+          threshold = 0.1,
+          abs = TRUE,
+          colors = c("black", "red"),
+          line = TRUE) + 
+    theme(
+    axis.text.y = element_text(size = 20),   
+    axis.text.x = element_text(size = 15),   
+    axis.title = element_text(size = 15),
+    legend.text = element_text(size = 17),
+    legend.title = element_text(size = 17),
+    plot.title = element_text(size = 17, face = "bold")
+
+  )
+
+
+
+print(plot_obj)  
+
+
+dev.off()
+
+
+  
+ matched_data <- match.data(match_model) %>%
+    mutate(ano = year)  # Correct assignment here
+
+  assign(paste0("df_matched_", year), matched_data)
+}
+
+rm(plot_obj)
+
+
+
+df_psm <- bind_rows(df_matched_1992, df_matched_1993, df_matched_1995)
+
+#install.packages("cobalt")
+library(cobalt)
+
+#matched_data$combined_weight <- matched_data$weights * matched_data$sample_weight
+
+
+
+
+```
+
+
+```{r}
+
+df_event <- df_psm %>%
+  mutate(
+    treat = as.integer(tratamento == 1),
+    d_1992 = ifelse(ano == 1992, 1, 0),
+    d_1993 = ifelse(ano == 1993, 1, 0),
+    d_1995 = ifelse(ano == 1995, 1, 0),
+      )
+
+# Interações ano-tratamento
+df_event <- df_event %>%
+  mutate(
+    treat_1992 = treat * d_1992, 
+    treat_1993 = treat * d_1993,
+    treat_1995 = treat * d_1995,
+  )
+
+# Regressão:
+reg_es <- lm(anos_estudo ~
+               treat_1992 + treat_1993 + treat_1995, 
+             data = df_event,
+             weights = df_event$weights)
+
+# reg_es <- feols(
+#   anos_educ ~ 
+#      treat_1992 + treat_1993 + treat_1995,
+#   data = df_event,
+#   weights = ~weights
+# )
+
+summary(reg_es)
+
+
+coefs_df <- tidy(reg_es) %>%
+  filter(str_detect(term, "treat_")) %>%
+  mutate(
+    ano = str_extract(term, "\\d+"),
+    ano = as.integer(ano),
+    conf.low = estimate - 1.96 * std.error,
+    conf.high = estimate + 1.96 * std.error
+  ) %>% 
+  bind_rows(tibble(
+    term = 'treat_1992',
+    estimate = 0,
+    std.error = NA,
+    statistic = NA,
+    p.value = NA,
+    ano = 2019,
+    conf.low = 0,
+    conf.high = 0))
+
+
+
+ggplot(coefs_df, aes(x = ano, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3) +
+  geom_vline(xintercept = 1992, linetype = "dashed", color = "gray40") +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  
+  scale_x_continuous(breaks = c(1992, 1993, 1994, 1995)) + 
+  labs(
+    x = "Ano",
+    y = "Efeito relativo (em relação a 1992)",
+    title = "Event Study - Efeitos da política nos anos de educação"
+  ) +
+  theme_minimal()+
+  theme(plot.title = element_text(size = 12, hjust = 0.5, face = "bold")
+        )
+
+
+```
