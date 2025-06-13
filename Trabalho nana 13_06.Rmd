@@ -494,87 +494,95 @@ for (year in c(1992, 1993, 1995)) {
   
   df_psm <- temp %>% 
     filter(ano == year) %>% 
-    select(c(tratamento, idade, anos_estudo, ultima_serie_concluida, renda_dom_per_capita,
+    select(c(tratamento, idade, anos_estudo, peso_pessoa, ultima_serie_concluida, renda_dom_per_capita,
              pensao_dummy, total_filhos)) %>% 
     filter(complete.cases(.))
 
   match_model <- matchit(tratamento ~
                            idade +
-                           anos_estudo + 
                            ultima_serie_concluida +
                            renda_dom_per_capita +
                            total_filhos,
                          data = df_psm,
+                         s.weights = df_psm$peso_pessoa,
                          caliper = 0.05,
                          method = "nearest",
                          replace = TRUE)
   
- fig <- plot(summary(match_model,
-               interactions = T)
-               #,
-               #var.order = "unmatched",
-               #abs = T
-       )
- 
+ # fig <- plot(summary(match_model,
+ #               interactions = T)
+ #               #,
+ #               #var.order = "unmatched",
+ #               #abs = T
+ #       )
+ # 
 
  
- # Open PNG device
-pdf(paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/",year,"_matchit_summary_plot.pdf"), width = 8, height = 6)
+sum <- summary(match_model)
+  ess_table <- sum$nn 
+  latex_df <- as.data.frame(ess_table)
 
-# Generate the plot (this draws directly to the file)
-plot(summary(match_model, interactions = TRUE))
+  latex_table <- kable(latex_df,
+                       format = "latex",
+                       booktabs = TRUE,
+                       caption = "Estatísticas descritivas ponderadas",
+                       align = "lccc")
 
-# Close the device
-dev.off()
+  writeLines(latex_table, 
+             paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/", year, "_match_summary.tex"))
 
- 
-
-
-# Define custom labels
-custom_labels <- c(
-  idade = "Idade",
-  anos_estudo = "Anos de Estudo",
-  ultima_serie_concluida = "Última Série",
-  renda_dom_per_capita = "Renda per Capita",
-  total_filhos = "Total de Filhos"
-)
+  # 
+  # balance <- bal.tab(match_model)$Balance
+  # rownames(balance) <- gsub("distance_2.22044604925031e-16", 
+  #                           "distance_weighted", 
+  #                           rownames(balance))
 
 
-pdf(paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/",year,"_matchit_summary_love_plot.pdf"), width = 8, height = 6)
-
-plot_obj <- love.plot(match_model,
-          stats = "mean.diffs",
-          var.names = custom_labels,
-          threshold = 0.1,
-          abs = TRUE,
-          colors = c("black", "red"),
-          line = TRUE) + 
-    theme(
-    axis.text.y = element_text(size = 20),   
-    axis.text.x = element_text(size = 15),   
-    axis.title = element_text(size = 15),
-    legend.text = element_text(size = 17),
-    legend.title = element_text(size = 17),
-    plot.title = element_text(size = 17, face = "bold")
-
+  custom_labels <- c(
+    distance_weighted = "Distância (Peso)",
+    idade = "Idade",
+    ultima_serie_concluida = "Última Série",
+    renda_dom_per_capita = "Renda per Capita",
+    total_filhos = "Total de Filhos"
   )
 
+  # Plot
+  pdf(paste0("C:/Users/tuffy/Documents/Trabalhos/Ava_Pol/",
+              year, "_matchit_summary_love_plot.pdf"), 
+      width = 8, height = 6)
 
+  plot_obj <- love.plot(match_model,
+                        stats = "mean.diffs",
+                        abs = TRUE,
+                        threshold = 0.1,
+                        colors = c("black", "red"),
+                        line = TRUE,
+                        var.names = custom_labels,
+                        drop.distance = T
+                        ) +
+    theme(
+      axis.text.y = element_text(size = 20),   
+      axis.text.x = element_text(size = 15),   
+      axis.title = element_text(size = 15),
+      legend.text = element_text(size = 17),
+      legend.title = element_text(size = 17),
+      plot.title = element_text(size = 17, face = "bold")
+    )
 
-print(plot_obj)  
+  print(plot_obj)
+  dev.off()
 
-
-dev.off()
-
-
-  
- matched_data <- match.data(match_model) %>%
-    mutate(ano = year)  # Correct assignment here
+  #
+  matched_data <- match.data(match_model) %>%
+    mutate(ano = year)
 
   assign(paste0("df_matched_", year), matched_data)
+
+  rm(year, custom_labels, sum, ess_table, latex_df, latex_table)
+
 }
 
-rm(plot_obj)
+rm(plot_obj, fig)
 
 
 
@@ -586,13 +594,34 @@ library(cobalt)
 #matched_data$combined_weight <- matched_data$weights * matched_data$sample_weight
 
 
-
+rm(df_matched_1992, df_matched_1993, df_matched_1995, col, row)
 
 ```
 
 
 ```{r}
 
+library(fixest)
+
+# ---------------------------------------------------------------------------- #
+# Nova ----
+# ---------------------------------------------------------------------------- #
+
+df_psm$ano <- factor(df_psm$ano) #Criando valores discretos
+df_psm$ano <- relevel(df_psm$ano, ref = "1992") #Criando dummys
+
+
+model <- feols(anos_estudo ~ tratamento + i(ano, tratamento, ref = "1992"),
+               data = df_psm,
+               vcov = "hetero")
+summary(model)
+
+
+etable(model)
+
+# ---------------------------------------------------------------------------- #
+# Estimação Passada ----
+# ---------------------------------------------------------------------------- #
 df_event <- df_psm %>%
   mutate(
     treat = as.integer(tratamento == 1),
@@ -610,7 +639,7 @@ df_event <- df_event %>%
   )
 
 # Regressão:
-reg_es <- lm(anos_estudo ~
+reg_es <- feols(anos_estudo ~
                treat_1992 + treat_1993 + treat_1995, 
              data = df_event,
              weights = df_event$weights)
@@ -624,6 +653,7 @@ reg_es <- lm(anos_estudo ~
 
 summary(reg_es)
 
+etable(reg_es)
 
 coefs_df <- tidy(reg_es) %>%
   filter(str_detect(term, "treat_")) %>%
